@@ -67,8 +67,8 @@ logger = logging.getLogger(__name__)
 class AliyunDataTrace(BaseTraceInstance):
 
     def __init__(
-        self,
-        aliyun_config: AliyunConfig,
+            self,
+            aliyun_config: AliyunConfig,
     ):
         super().__init__(aliyun_config)
         base_url = aliyun_config.endpoint.rstrip('/')
@@ -270,8 +270,8 @@ class AliyunDataTrace(BaseTraceInstance):
         return workflow_node_executions
 
     def build_workflow_node_span(
-        self, node_execution: WorkflowNodeExecution, trace_id: int,
-        trace_info: WorkflowTraceInfo,workflow_span_id: int):
+            self, node_execution: WorkflowNodeExecution, trace_id: int,
+            trace_info: WorkflowTraceInfo, workflow_span_id: int):
         try:
             if node_execution.node_type == NodeType.LLM:
                 node_span = self.build_workflow_llm_span(
@@ -297,8 +297,8 @@ class AliyunDataTrace(BaseTraceInstance):
             span_status = Status(StatusCode.ERROR, str(node_execution.error))
         return span_status
 
-    def build_workflow_task_span(self, trace_id:int, workflow_span_id:int, trace_info: WorkflowTraceInfo,
-                                node_execution: WorkflowNodeExecution) -> SpanData:
+    def build_workflow_task_span(self, trace_id: int, workflow_span_id: int, trace_info: WorkflowTraceInfo,
+                                 node_execution: WorkflowNodeExecution) -> SpanData:
         return SpanData(
             trace_id=trace_id,
             parent_span_id=workflow_span_id,
@@ -316,8 +316,8 @@ class AliyunDataTrace(BaseTraceInstance):
             status=self.get_workflow_node_status(node_execution),
         )
 
-    def build_workflow_tool_span(self, trace_id:int, workflow_span_id:int, trace_info: WorkflowTraceInfo,
-                                node_execution: WorkflowNodeExecution) -> SpanData:
+    def build_workflow_tool_span(self, trace_id: int, workflow_span_id: int, trace_info: WorkflowTraceInfo,
+                                 node_execution: WorkflowNodeExecution) -> SpanData:
         return SpanData(
             trace_id=trace_id,
             parent_span_id=workflow_span_id,
@@ -330,16 +330,16 @@ class AliyunDataTrace(BaseTraceInstance):
                 GEN_AI_FRAMEWORK: 'dify',
                 TOOL_NAME: node_execution.title,
                 TOOL_DESCRIPTION: json.dumps(
-                    node_execution.metadata.get(WorkflowNodeExecutionMetadataKey.TOOL_INFO, {}),ensure_ascii=False),
-                TOOL_PARAMETERS: json.dumps(node_execution.inputs if node_execution.inputs else {},ensure_ascii=False),
-                INPUT_VALUE: json.dumps(node_execution.inputs if node_execution.inputs else {},ensure_ascii=False),
+                    node_execution.metadata.get(WorkflowNodeExecutionMetadataKey.TOOL_INFO, {}), ensure_ascii=False),
+                TOOL_PARAMETERS: json.dumps(node_execution.inputs if node_execution.inputs else {}, ensure_ascii=False),
+                INPUT_VALUE: json.dumps(node_execution.inputs if node_execution.inputs else {}, ensure_ascii=False),
                 OUTPUT_VALUE: json.dumps(node_execution.outputs, ensure_ascii=False),
             },
             status=self.get_workflow_node_status(node_execution),
         )
 
-    def build_workflow_retrieval_span(self, trace_id:int, workflow_span_id:int, trace_info: WorkflowTraceInfo,
-                                node_execution: WorkflowNodeExecution) -> SpanData:
+    def build_workflow_retrieval_span(self, trace_id: int, workflow_span_id: int, trace_info: WorkflowTraceInfo,
+                                      node_execution: WorkflowNodeExecution) -> SpanData:
         return SpanData(
             trace_id=trace_id,
             parent_span_id=workflow_span_id,
@@ -358,7 +358,7 @@ class AliyunDataTrace(BaseTraceInstance):
             status=self.get_workflow_node_status(node_execution),
         )
 
-    def build_workflow_llm_span(self, trace_id:int, workflow_span_id:int, trace_info: WorkflowTraceInfo,
+    def build_workflow_llm_span(self, trace_id: int, workflow_span_id: int, trace_info: WorkflowTraceInfo,
                                 node_execution: WorkflowNodeExecution) -> SpanData:
         return SpanData(
             trace_id=trace_id,
@@ -385,7 +385,7 @@ class AliyunDataTrace(BaseTraceInstance):
             status=self.get_workflow_node_status(node_execution),
         )
 
-    def add_workflow_span(self, trace_id:int, workflow_span_id:int, trace_info: WorkflowTraceInfo):
+    def add_workflow_span(self, trace_id: int, workflow_span_id: int, trace_info: WorkflowTraceInfo):
         message_span_id = None
         if trace_info.message_id:
             message_span_id = convert_to_span_id(trace_info.message_id, 'message')
@@ -406,7 +406,7 @@ class AliyunDataTrace(BaseTraceInstance):
                     GEN_AI_USER_ID: str(user_id),
                     GEN_AI_SPAN_KIND: GenAISpanKind.CHAIN.value,
                     GEN_AI_FRAMEWORK: 'dify',
-                    INPUT_VALUE: trace_info.workflow_run_inputs.get('sys.query',''),
+                    INPUT_VALUE: trace_info.workflow_run_inputs.get('sys.query', ''),
                     OUTPUT_VALUE: json.dumps(trace_info.workflow_run_outputs, ensure_ascii=False),
                 },
                 status=status,
