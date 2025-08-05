@@ -105,8 +105,13 @@ class AliyunDataTrace(BaseTraceInstance):
         trace_id = convert_to_trace_id(trace_info.workflow_run_id)
         if trace_info.trace_id:
             trace_id = convert_string_to_id(trace_info.trace_id)
+        parent_span_id = None
+        if trace_info.otel_context:
+            trace_id = trace_info.otel_context.get("trace_id")
+            parent_span_id = trace_info.otel_context.get("span_id")
+
         workflow_span_id = convert_to_span_id(trace_info.workflow_run_id, "workflow")
-        self.add_workflow_span(trace_id, workflow_span_id, trace_info)
+        self.add_workflow_span(trace_id, workflow_span_id, trace_info, parent_span_id)
 
         workflow_node_executions = self.get_workflow_node_executions(trace_info)
         for node_execution in workflow_node_executions:
@@ -413,7 +418,8 @@ class AliyunDataTrace(BaseTraceInstance):
             status=self.get_workflow_node_status(node_execution),
         )
 
-    def add_workflow_span(self, trace_id: int, workflow_span_id: int, trace_info: WorkflowTraceInfo):
+    def add_workflow_span(
+        self, trace_id: int, workflow_span_id: int, trace_info: WorkflowTraceInfo, parent_span_id: int):
         message_span_id = None
         if trace_info.message_id:
             message_span_id = convert_to_span_id(trace_info.message_id, "message")
@@ -424,7 +430,7 @@ class AliyunDataTrace(BaseTraceInstance):
         if message_span_id:  # chatflow
             message_span = SpanData(
                 trace_id=trace_id,
-                parent_span_id=None,
+                parent_span_id=parent_span_id,
                 span_id=message_span_id,
                 name="message",
                 start_time=convert_datetime_to_nanoseconds(trace_info.start_time),
@@ -443,7 +449,7 @@ class AliyunDataTrace(BaseTraceInstance):
 
         workflow_span = SpanData(
             trace_id=trace_id,
-            parent_span_id=message_span_id,
+            parent_span_id=message_span_id or parent_span_id,
             span_id=workflow_span_id,
             name="workflow",
             start_time=convert_datetime_to_nanoseconds(trace_info.start_time),

@@ -15,6 +15,7 @@ class BaseTraceInfo(BaseModel):
     end_time: Optional[datetime] = None
     metadata: dict[str, Any]
     trace_id: Optional[str] = None
+    otel_context: Optional[dict[str, Any]] = None
 
     @field_validator("inputs", "outputs")
     @classmethod

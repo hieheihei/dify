@@ -13,6 +13,7 @@ from flask import current_app
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from configs import dify_config
 from core.helper.encrypter import decrypt_token, encrypt_token, obfuscated_token
 from core.ops.entities.config_entity import (
     OPS_FILE_PATH,
@@ -424,6 +425,7 @@ class TraceTask:
         self.app_id = None
         self.trace_id = None
         self.kwargs = kwargs
+        self.otel_context = None
         external_trace_id = kwargs.get("external_trace_id")
         if external_trace_id:
             self.trace_id = external_trace_id
@@ -525,6 +527,7 @@ class TraceTask:
 
             workflow_trace_info = WorkflowTraceInfo(
                 trace_id=self.trace_id,
+                otel_context=self.otel_context,
                 workflow_data=workflow_run.to_dict(),
                 conversation_id=conversation_id,
                 workflow_id=workflow_id,
@@ -585,6 +588,7 @@ class TraceTask:
 
         message_trace_info = MessageTraceInfo(
             trace_id=self.trace_id,
+            otel_context=self.otel_context,
             message_id=message_id,
             message_data=message_data.to_dict(),
             conversation_model=conversation_mode,
@@ -847,6 +851,16 @@ class TraceQueueManager:
         try:
             if self.trace_instance:
                 trace_task.app_id = self.app_id
+                if dify_config.ENABLE_OTEL:
+                    from opentelemetry import trace
+                    span_context = trace.get_current_span().get_span_context()
+                    otel_context = {
+                        "trace_id": span_context.trace_id,
+                        "span_id": span_context.span_id,
+                        "trace_flags": span_context.trace_flags,
+                        "is_remote": span_context.is_remote,
+                    }
+                    trace_task.otel_context = otel_context
                 trace_manager_queue.put(trace_task)
         except Exception as e:
             logging.exception("Error adding trace task, trace_type %s", trace_task.trace_type)
