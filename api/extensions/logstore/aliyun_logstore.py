@@ -1,7 +1,7 @@
 import logging
 import os
 
-from aliyun.log import IndexConfig, IndexLineConfig, LogClient
+from aliyun.log import IndexConfig, IndexLineConfig, LogClient, LogItem, PutLogsRequest
 from aliyun.log.auth import AUTH_VERSION_4
 from dotenv import load_dotenv
 
@@ -95,10 +95,13 @@ class AliyunLogStore:
         self.client.create_index(self.project_name, logstore_name,index_config)
         logger.info("index for {logstore_name} created successfully")
 
-    def put_log(self):
-        pass
+    def put_log(self,logstore:str,contents:list[tuple[str,str]]) -> None:
+        log_item = LogItem(contents=contents)
+        request = PutLogsRequest(project=self.project_name, logstore=logstore,logitems=[log_item])
+        self.client.put_logs(request)
 
 
 if __name__ == '__main__':
     aliyun_logstore = AliyunLogStore()
-    aliyun_logstore.init_project_logstore()
+    # aliyun_logstore.init_project_logstore()
+    aliyun_logstore.put_log(AliyunLogStore.workflow_execution_logstore,[('key1','value1')])
