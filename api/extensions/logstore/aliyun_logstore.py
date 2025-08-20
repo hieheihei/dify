@@ -50,7 +50,7 @@ class AliyunLogStore:
 
     def create_project(self):
         self.client.create_project(self.project_name, AliyunLogStore.project_des)
-        logger.info("Project {self.project_name} created successfully")
+        logger.info("Project %s created successfully", self.project_name)
 
     def is_logstore_exist(self,logstore_name:str) -> bool:
         try:
@@ -73,7 +73,7 @@ class AliyunLogStore:
                     logstore_name=logstore_name,
                     ttl=self.logstore_ttl
                 )
-                logger.info("logstore {logstore_name} created successfully")
+                logger.info("logstore %s created successfully", logstore_name)
 
             if not self.is_index_exist(logstore_name):
                 self.create_index(logstore_name)
@@ -93,7 +93,7 @@ class AliyunLogStore:
         index_config = IndexConfig(line_config=line_config)
 
         self.client.create_index(self.project_name, logstore_name,index_config)
-        logger.info("index for {logstore_name} created successfully")
+        logger.info("index for %s created successfully", logstore_name)
 
     def put_log(self,logstore:str,contents:list[tuple[str,str]]) -> None:
         log_item = LogItem(contents=contents)

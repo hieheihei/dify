@@ -6,7 +6,7 @@ import json
 import logging
 from collections.abc import Sequence
 from datetime import datetime
-from typing import Optional, Union, Tuple
+from typing import Optional, Union
 
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import sessionmaker
@@ -27,7 +27,8 @@ from models import (
     Account,
     CreatorUserRole,
     EndUser,
-    WorkflowNodeExecutionTriggeredFrom, WorkflowNodeExecutionModel,
+    WorkflowNodeExecutionModel,
+    WorkflowNodeExecutionTriggeredFrom,
 )
 
 logger = logging.getLogger(__name__)
@@ -126,7 +127,7 @@ class LogstoreWorkflowNodeExecutionRepository(WorkflowNodeExecutionRepository):
             finished_at=finished_at,
         )
 
-    def _to_logstore_model(self, domain_model: WorkflowNodeExecution) -> Sequence[Tuple[str, str]]:
+    def _to_logstore_model(self, domain_model: WorkflowNodeExecution) -> Sequence[tuple[str, str]]:
         if not self._triggered_from:
             raise ValueError("triggered_from is required in repository constructor")
         if not self._creator_user_id:
