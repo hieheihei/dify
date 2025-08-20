@@ -6,6 +6,7 @@ from typing import Optional, Union
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import sessionmaker
 
+from core.repositories.sqlalchemy_workflow_execution_repository import SQLAlchemyWorkflowExecutionRepository
 from core.workflow.entities.workflow_execution import (
     WorkflowExecution,
     WorkflowExecutionStatus,
@@ -61,6 +62,9 @@ class LogstoreWorkflowExecutionRepository(WorkflowExecutionRepository):
 
         # Determine user role based on user type
         self._creator_user_role = CreatorUserRole.ACCOUNT if isinstance(user, Account) else CreatorUserRole.END_USER
+
+        # todo:tmp
+        self.sql_repository = SQLAlchemyWorkflowExecutionRepository(session_factory, user, app_id, triggered_from)
 
 
     def _to_domain_model(self, logstore_model: list[tuple[str, str]]) -> WorkflowExecution:
@@ -173,3 +177,6 @@ class LogstoreWorkflowExecutionRepository(WorkflowExecutionRepository):
         self.logstore_client.put_log(AliyunLogStore.workflow_execution_logstore, logstore_model)
 
         logger.debug("Updating cache for execution_id: %s", execution.id_)
+
+        # todo:tmp
+        self.sql_repository.save(execution)

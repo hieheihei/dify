@@ -4,12 +4,15 @@ Logstore implementation of the WorkflowNodeExecutionRepository.
 
 import json
 import logging
+from collections.abc import Sequence
 from datetime import datetime
-from typing import Optional, Union
+from typing import Optional, Union, Tuple
 
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import sessionmaker
 
+from core.model_runtime.utils.encoders import jsonable_encoder
+from core.repositories import SQLAlchemyWorkflowNodeExecutionRepository
 from core.workflow.entities.workflow_node_execution import (
     WorkflowNodeExecution,
     WorkflowNodeExecutionMetadataKey,
@@ -17,13 +20,14 @@ from core.workflow.entities.workflow_node_execution import (
 )
 from core.workflow.nodes.enums import NodeType
 from core.workflow.repositories.workflow_node_execution_repository import OrderConfig, WorkflowNodeExecutionRepository
+from core.workflow.workflow_type_encoder import WorkflowRuntimeTypeConverter
 from extensions.logstore.aliyun_logstore import AliyunLogStore
 from libs.helper import extract_tenant_id
 from models import (
     Account,
     CreatorUserRole,
     EndUser,
-    WorkflowNodeExecutionTriggeredFrom,
+    WorkflowNodeExecutionTriggeredFrom, WorkflowNodeExecutionModel,
 )
 
 logger = logging.getLogger(__name__)
@@ -71,16 +75,9 @@ class LogstoreWorkflowNodeExecutionRepository(WorkflowNodeExecutionRepository):
         # Determine user role based on user type
         self._creator_user_role = CreatorUserRole.ACCOUNT if isinstance(user, Account) else CreatorUserRole.END_USER
 
+        self.sql_repository = SQLAlchemyWorkflowNodeExecutionRepository(session_factory, user, app_id, triggered_from)
+
     def _to_domain_model(self, logstore_model: list[tuple[str, str]]) -> WorkflowNodeExecution:
-        """
-        Convert a logstore model (List[Tuple[str, str]]) to a domain model.
-
-        Args:
-            logstore_model: The logstore model as a list of key-value tuples
-
-        Returns:
-            The domain model
-        """
         # Convert list of tuples to dictionary for easier access
         logstore_dict = dict(logstore_model)
 
@@ -129,23 +126,15 @@ class LogstoreWorkflowNodeExecutionRepository(WorkflowNodeExecutionRepository):
             finished_at=finished_at,
         )
 
-    def _to_logstore_model(self, domain_model: WorkflowNodeExecution) -> list[tuple[str, str]]:
-        """
-        Convert a domain model to a logstore model (List[Tuple[str, str]]).
-
-        Args:
-            domain_model: The domain model to convert
-
-        Returns:
-            The logstore model as a list of key-value tuples
-        """
-        # Use values from constructor if provided
+    def _to_logstore_model(self, domain_model: WorkflowNodeExecution) -> Sequence[Tuple[str, str]]:
         if not self._triggered_from:
             raise ValueError("triggered_from is required in repository constructor")
         if not self._creator_user_id:
             raise ValueError("created_by is required in repository constructor")
         if not self._creator_user_role:
             raise ValueError("created_by_role is required in repository constructor")
+
+        json_converter = WorkflowRuntimeTypeConverter()
 
         logstore_model = [
             ('id', domain_model.id),
@@ -161,16 +150,23 @@ class LogstoreWorkflowNodeExecutionRepository(WorkflowNodeExecutionRepository):
             ('node_id', domain_model.node_id),
             ('node_type', domain_model.node_type.value),
             ('title', domain_model.title),
-            ('inputs', json.dumps(domain_model.inputs) if domain_model.inputs else '{}'),
-            ('process_data', json.dumps(domain_model.process_data) if domain_model.process_data else '{}'),
-            ('outputs', json.dumps(domain_model.outputs) if domain_model.outputs else '{}'),
+            ('inputs',
+                json.dumps(json_converter.to_json_encodable(domain_model.inputs))
+                if domain_model.inputs else '{}'),
+            ('process_data',
+                json.dumps(json_converter.to_json_encodable(domain_model.process_data))
+                if domain_model.process_data else '{}'),
+            ('outputs',
+                json.dumps(json_converter.to_json_encodable(domain_model.outputs))
+                if domain_model.outputs else '{}'),
             ('status', domain_model.status.value),
             ('error', domain_model.error or ''),
             ('elapsed_time', str(domain_model.elapsed_time)),
-            ('execution_metadata', json.dumps(domain_model.metadata) if domain_model.metadata else '{}'),
+            ('execution_metadata',
+                json.dumps(jsonable_encoder(domain_model.metadata))
+                if domain_model.metadata else '{}'),
             ('created_at', domain_model.created_at.isoformat() if domain_model.created_at else ''),
-            ('created_by_role', self._creator_user_role.value
-                if hasattr(self._creator_user_role, 'value') else str(self._creator_user_role)),
+            ('created_by_role', self._creator_user_role.value),
             ('created_by', self._creator_user_id),
             ('finished_at', domain_model.finished_at.isoformat() if domain_model.finished_at else ''),
         ]
@@ -189,19 +185,18 @@ class LogstoreWorkflowNodeExecutionRepository(WorkflowNodeExecutionRepository):
         Args:
             execution: The NodeExecution domain entity to persist
         """
-        # Convert domain model to logstore model using tenant context and other attributes
         logstore_model = self._to_logstore_model(execution)
-
-        # Store in logstore
         self.logstore_client.put_log(AliyunLogStore.workflow_node_execution_logstore, logstore_model)
-
         logger.debug("Saved node execution to logstore for node_execution_id: %s", execution.node_execution_id)
+
+        #todo:tmp
+        self.sql_repository.save(execution)
 
     def get_db_models_by_workflow_run(
         self,
         workflow_run_id: str,
         order_config: Optional[OrderConfig] = None,
-    ) -> list[list[tuple[str, str]]]:
+    ) -> Sequence[WorkflowNodeExecutionModel]:
         """
         Retrieve all WorkflowNodeExecution logstore models for a specific workflow run.
 
@@ -215,16 +210,15 @@ class LogstoreWorkflowNodeExecutionRepository(WorkflowNodeExecutionRepository):
         Returns:
             A list of logstore models (List[List[Tuple[str, str]]])
         """
-        # TODO: Implement logstore querying logic
-        # This would require implementing search/filter capabilities in the logstore client
-        logger.warning("get_db_models_by_workflow_run not implemented for logstore repository")
-        return []
+
+        # todo:tmp
+        return self.sql_repository.get_db_models_by_workflow_run(workflow_run_id,order_config)
 
     def get_by_workflow_run(
         self,
         workflow_run_id: str,
         order_config: Optional[OrderConfig] = None,
-    ) -> list[WorkflowNodeExecution]:
+    ) -> Sequence[WorkflowNodeExecution]:
         """
         Retrieve all NodeExecution instances for a specific workflow run.
 
@@ -238,7 +232,6 @@ class LogstoreWorkflowNodeExecutionRepository(WorkflowNodeExecutionRepository):
         Returns:
             A list of NodeExecution instances
         """
-        # TODO: Implement logstore querying logic
-        # This would require implementing search/filter capabilities in the logstore client
-        logger.warning("get_by_workflow_run not implemented for logstore repository")
-        return []
+
+        # todo:tmp
+        return self.sql_repository.get_by_workflow_run(workflow_run_id, order_config)
