@@ -4,6 +4,7 @@ Logstore implementation of the WorkflowNodeExecutionRepository.
 
 import json
 import logging
+import traceback
 from collections.abc import Sequence
 from datetime import datetime
 from typing import Optional, Union
@@ -186,9 +187,19 @@ class LogstoreWorkflowNodeExecutionRepository(WorkflowNodeExecutionRepository):
         Args:
             execution: The NodeExecution domain entity to persist
         """
-        logstore_model = self._to_logstore_model(execution)
-        self.logstore_client.put_log(AliyunLogStore.workflow_node_execution_logstore, logstore_model)
-        logger.debug("Saved node execution to logstore for node_execution_id: %s", execution.node_execution_id)
+        try:
+            logstore_model = self._to_logstore_model(execution)
+            self.logstore_client.put_log(
+                AliyunLogStore.workflow_node_execution_logstore,
+                logstore_model
+            )
+            logger.debug(
+                "Saved node execution to logstore for node_execution_id: %s",
+                execution.node_execution_id
+            )
+        except Exception as e:
+            logger.exception("Failed to save node execution to logstore for node_execution_id: %s",
+                             execution.node_execution_id)
 
         #todo:tmp
         self.sql_repository.save(execution)

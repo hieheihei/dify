@@ -1,5 +1,6 @@
 import json
 import logging
+import traceback
 from datetime import datetime
 from typing import Optional, Union
 
@@ -173,10 +174,15 @@ class LogstoreWorkflowExecutionRepository(WorkflowExecutionRepository):
         Args:
             execution: The WorkflowExecution domain entity to persist
         """
-        logstore_model = self._to_logstore_model(execution)
-        self.logstore_client.put_log(AliyunLogStore.workflow_execution_logstore, logstore_model)
+        try:
+            logstore_model = self._to_logstore_model(execution)
+            self.logstore_client.put_log(AliyunLogStore.workflow_execution_logstore, logstore_model)
 
-        logger.debug("Updating cache for execution_id: %s", execution.id_)
+            logger.debug("Updating cache for execution_id: %s", execution.id_)
+        except Exception as e:
+            logger.exception(
+                "Failed to update cache for execution_id: %s",execution.id_
+            )
 
         # todo:tmp
         self.sql_repository.save(execution)
