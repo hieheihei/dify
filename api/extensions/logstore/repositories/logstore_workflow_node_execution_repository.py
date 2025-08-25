@@ -4,7 +4,6 @@ Logstore implementation of the WorkflowNodeExecutionRepository.
 
 import json
 import logging
-import traceback
 from collections.abc import Sequence
 from datetime import datetime
 from typing import Optional, Union
