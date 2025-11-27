@@ -2,17 +2,14 @@ from collections.abc import Callable, Mapping, Sequence
 from typing import TYPE_CHECKING, Any, TypeAlias
 
 from core.variables import SegmentType, Variable
-from core.variables.segments import BooleanSegment
 from core.workflow.constants import CONVERSATION_VARIABLE_NODE_ID
 from core.workflow.conversation_variable_updater import ConversationVariableUpdater
 from core.workflow.entities import GraphInitParams
-from core.workflow.enums import ErrorStrategy, NodeType, WorkflowNodeExecutionStatus
+from core.workflow.enums import NodeType, WorkflowNodeExecutionStatus
 from core.workflow.node_events import NodeRunResult
-from core.workflow.nodes.base.entities import BaseNodeData, RetryConfig
 from core.workflow.nodes.base.node import Node
 from core.workflow.nodes.variable_assigner.common import helpers as common_helpers
 from core.workflow.nodes.variable_assigner.common.exc import VariableOperatorNodeError
-from factories import variable_factory
 
 from ..common.impl import conversation_variable_updater_factory
 from .node_data import VariableAssignerData, WriteMode
@@ -24,32 +21,11 @@ if TYPE_CHECKING:
 _CONV_VAR_UPDATER_FACTORY: TypeAlias = Callable[[], ConversationVariableUpdater]
 
 
-class VariableAssignerNode(Node):
+class VariableAssignerNode(Node[VariableAssignerData]):
     node_type = NodeType.VARIABLE_ASSIGNER
     _conv_var_updater_factory: _CONV_VAR_UPDATER_FACTORY
 
     _node_data: VariableAssignerData
-
-    def init_node_data(self, data: Mapping[str, Any]):
-        self._node_data = VariableAssignerData.model_validate(data)
-
-    def _get_error_strategy(self) -> ErrorStrategy | None:
-        return self._node_data.error_strategy
-
-    def _get_retry_config(self) -> RetryConfig:
-        return self._node_data.retry_config
-
-    def _get_title(self) -> str:
-        return self._node_data.title
-
-    def _get_description(self) -> str | None:
-        return self._node_data.desc
-
-    def _get_default_value_dict(self) -> dict[str, Any]:
-        return self._node_data.default_value_dict
-
-    def get_base_node_data(self) -> BaseNodeData:
-        return self._node_data
 
     def __init__(
         self,
@@ -116,7 +92,7 @@ class VariableAssignerNode(Node):
                 updated_variable = original_variable.model_copy(update={"value": updated_value})
 
             case WriteMode.CLEAR:
-                income_value = get_zero_value(original_variable.value_type)
+                income_value = SegmentType.get_zero_value(original_variable.value_type)
                 updated_variable = original_variable.model_copy(update={"value": income_value.to_object()})
 
         # Over write the variable.
@@ -143,24 +119,3 @@ class VariableAssignerNode(Node):
             process_data=common_helpers.set_updated_variables({}, updated_variables),
             outputs={},
         )
-
-
-def get_zero_value(t: SegmentType):
-    # TODO(QuantumGhost): this should be a method of `SegmentType`.
-    match t:
-        case SegmentType.ARRAY_OBJECT | SegmentType.ARRAY_STRING | SegmentType.ARRAY_NUMBER | SegmentType.ARRAY_BOOLEAN:
-            return variable_factory.build_segment_with_type(t, [])
-        case SegmentType.OBJECT:
-            return variable_factory.build_segment({})
-        case SegmentType.STRING:
-            return variable_factory.build_segment("")
-        case SegmentType.INTEGER:
-            return variable_factory.build_segment(0)
-        case SegmentType.FLOAT:
-            return variable_factory.build_segment(0.0)
-        case SegmentType.NUMBER:
-            return variable_factory.build_segment(0)
-        case SegmentType.BOOLEAN:
-            return BooleanSegment(value=False)
-        case _:
-            raise VariableOperatorNodeError(f"unsupported variable type: {t}")

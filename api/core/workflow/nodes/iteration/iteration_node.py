@@ -14,7 +14,6 @@ from core.variables.segments import ArrayAnySegment, ArraySegment
 from core.variables.variables import VariableUnion
 from core.workflow.constants import CONVERSATION_VARIABLE_NODE_ID
 from core.workflow.enums import (
-    ErrorStrategy,
     NodeExecutionType,
     NodeType,
     WorkflowNodeExecutionMetadataKey,
@@ -36,7 +35,6 @@ from core.workflow.node_events import (
     StreamCompletedEvent,
 )
 from core.workflow.nodes.base import LLMUsageTrackingMixin
-from core.workflow.nodes.base.entities import BaseNodeData, RetryConfig
 from core.workflow.nodes.base.node import Node
 from core.workflow.nodes.iteration.entities import ErrorHandleMode, IterationNodeData
 from core.workflow.runtime import VariablePool
@@ -60,7 +58,7 @@ logger = logging.getLogger(__name__)
 EmptyArraySegment = NewType("EmptyArraySegment", ArraySegment)
 
 
-class IterationNode(LLMUsageTrackingMixin, Node):
+class IterationNode(LLMUsageTrackingMixin, Node[IterationNodeData]):
     """
     Iteration Node.
     """
@@ -68,27 +66,6 @@ class IterationNode(LLMUsageTrackingMixin, Node):
     node_type = NodeType.ITERATION
     execution_type = NodeExecutionType.CONTAINER
     _node_data: IterationNodeData
-
-    def init_node_data(self, data: Mapping[str, Any]):
-        self._node_data = IterationNodeData.model_validate(data)
-
-    def _get_error_strategy(self) -> ErrorStrategy | None:
-        return self._node_data.error_strategy
-
-    def _get_retry_config(self) -> RetryConfig:
-        return self._node_data.retry_config
-
-    def _get_title(self) -> str:
-        return self._node_data.title
-
-    def _get_description(self) -> str | None:
-        return self._node_data.desc
-
-    def _get_default_value_dict(self) -> dict[str, Any]:
-        return self._node_data.default_value_dict
-
-    def get_base_node_data(self) -> BaseNodeData:
-        return self._node_data
 
     @classmethod
     def get_default_config(cls, filters: Mapping[str, object] | None = None) -> Mapping[str, object]:
@@ -237,8 +214,7 @@ class IterationNode(LLMUsageTrackingMixin, Node):
                     )
                 )
 
-                # Update the total tokens from this iteration
-                self.graph_runtime_state.total_tokens += graph_engine.graph_runtime_state.total_tokens
+                # Accumulate usage from this iteration
                 usage_accumulator[0] = self._merge_usage(
                     usage_accumulator[0], graph_engine.graph_runtime_state.llm_usage
                 )
@@ -265,7 +241,6 @@ class IterationNode(LLMUsageTrackingMixin, Node):
                         datetime,
                         list[GraphNodeEventBase],
                         object | None,
-                        int,
                         dict[str, VariableUnion],
                         LLMUsage,
                     ]
@@ -292,7 +267,6 @@ class IterationNode(LLMUsageTrackingMixin, Node):
                         iter_start_at,
                         events,
                         output_value,
-                        tokens_used,
                         conversation_snapshot,
                         iteration_usage,
                     ) = result
@@ -304,7 +278,6 @@ class IterationNode(LLMUsageTrackingMixin, Node):
                     yield from events
 
                     # Update tokens and timing
-                    self.graph_runtime_state.total_tokens += tokens_used
                     iter_run_map[str(index)] = (datetime.now(UTC).replace(tzinfo=None) - iter_start_at).total_seconds()
 
                     usage_accumulator[0] = self._merge_usage(usage_accumulator[0], iteration_usage)
@@ -336,7 +309,7 @@ class IterationNode(LLMUsageTrackingMixin, Node):
         item: object,
         flask_app: Flask,
         context_vars: contextvars.Context,
-    ) -> tuple[datetime, list[GraphNodeEventBase], object | None, int, dict[str, VariableUnion], LLMUsage]:
+    ) -> tuple[datetime, list[GraphNodeEventBase], object | None, dict[str, VariableUnion], LLMUsage]:
         """Execute a single iteration in parallel mode and return results."""
         with preserve_flask_contexts(flask_app=flask_app, context_vars=context_vars):
             iter_start_at = datetime.now(UTC).replace(tzinfo=None)
@@ -363,7 +336,6 @@ class IterationNode(LLMUsageTrackingMixin, Node):
                 iter_start_at,
                 events,
                 output_value,
-                graph_engine.graph_runtime_state.total_tokens,
                 conversation_snapshot,
                 graph_engine.graph_runtime_state.llm_usage,
             )

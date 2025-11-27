@@ -1119,13 +1119,19 @@ class RagPipelineService:
         with Session(db.engine) as session:
             rag_pipeline_dsl_service = RagPipelineDslService(session)
             dsl = rag_pipeline_dsl_service.export_rag_pipeline_dsl(pipeline=pipeline, include_secret=True)
-
+        if args.get("icon_info") is None:
+            args["icon_info"] = {}
+        if args.get("description") is None:
+            raise ValueError("Description is required")
+        if args.get("name") is None:
+            raise ValueError("Name is required")
         pipeline_customized_template = PipelineCustomizedTemplate(
-            name=args.get("name"),
-            description=args.get("description"),
-            icon=args.get("icon_info"),
+            name=args.get("name") or "",
+            description=args.get("description") or "",
+            icon=args.get("icon_info") or {},
             tenant_id=pipeline.tenant_id,
             yaml_content=dsl,
+            install_count=0,
             position=max_position + 1 if max_position else 1,
             chunk_structure=dataset.chunk_structure,
             language="en-US",
@@ -1265,8 +1271,8 @@ class RagPipelineService:
         )
         providers_map = {provider.plugin_id: provider.to_dict() for provider in providers}
 
-        plugin_manifests = marketplace.batch_fetch_plugin_manifests(plugin_ids)
-        plugin_manifests_map = {manifest.plugin_id: manifest for manifest in plugin_manifests}
+        plugin_manifests = marketplace.batch_fetch_plugin_by_ids(plugin_ids)
+        plugin_manifests_map = {manifest["plugin_id"]: manifest for manifest in plugin_manifests}
 
         installed_plugin_list = []
         uninstalled_plugin_list = []
@@ -1276,14 +1282,7 @@ class RagPipelineService:
             else:
                 plugin_manifest = plugin_manifests_map.get(plugin_id)
                 if plugin_manifest:
-                    uninstalled_plugin_list.append(
-                        {
-                            "plugin_id": plugin_id,
-                            "name": plugin_manifest.name,
-                            "icon": plugin_manifest.icon,
-                            "plugin_unique_identifier": plugin_manifest.latest_package_identifier,
-                        }
-                    )
+                    uninstalled_plugin_list.append(plugin_manifest)
 
         # Build recommended plugins list
         return {
