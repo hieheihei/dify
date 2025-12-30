@@ -76,9 +76,11 @@ class TraceClient:
                 return True
             else:
                 logger.debug("AliyunTrace API check failed: Unexpected status code: %s", response.status_code)
+                logger.warning("[aliyun_trace] API check failed: Unexpected status code: %s, endpoint=%s", response.status_code, self.endpoint)
                 return False
         except httpx.RequestError as e:
             logger.debug("AliyunTrace API check failed: %s", str(e))
+            logger.error("[aliyun_trace] API check failed: %s, endpoint=%s", str(e), self.endpoint, exc_info=True)
             raise ValueError(f"AliyunTrace API check failed: {str(e)}")
 
     def get_project_url(self) -> str:
@@ -86,11 +88,19 @@ class TraceClient:
 
     def add_span(self, span_data: SpanData | None) -> None:
         if span_data is None:
+            logger.error("[aliyun_trace] add_span called with None span_data")
             return
 
+        trace_id_hex = format(span_data.trace_id, "032x")
+        logger.info(
+            "[aliyun_trace] add_span called, trace_id=%s, span_name=%s",
+            trace_id_hex,
+            span_data.name,
+        )
         span: ReadableSpan = self.span_builder.build_span(span_data)
         with self.condition:
             if len(self.queue) == self.max_queue_size:
+                logger.warning("[aliyun_trace] Queue is full, likely spans will be dropped.")
                 if not self._spans_dropped:
                     logger.warning("Queue is full, likely spans will be dropped.")
                     self._spans_dropped = True
@@ -115,8 +125,10 @@ class TraceClient:
         if spans_to_export:
             try:
                 self.exporter.export(spans_to_export)
+                logger.info("[aliyun_trace] batch exported successfully, batch_size=%d", len(spans_to_export))
             except Exception as e:
                 logger.debug("Error exporting spans: %s", e)
+                logger.error("[aliyun_trace] batch export failed, batch_size=%d, error=%s", len(spans_to_export), str(e), exc_info=True)
 
     def shutdown(self) -> None:
         with self.condition:

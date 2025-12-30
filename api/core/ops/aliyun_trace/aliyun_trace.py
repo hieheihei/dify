@@ -106,13 +106,34 @@ class AliyunDataTrace(BaseTraceInstance):
             user_id=str(trace_info.metadata.get("user_id") or ""),
             links=create_links_from_trace_id(trace_info.trace_id),
         )
+        logger.info(
+            "[aliyun_trace] trace_metadata created, trace_id=%s, workflow_span_id=%s, session_id=%s",
+            trace_metadata.trace_id,
+            trace_metadata.workflow_span_id,
+            trace_metadata.session_id,
+        )
 
         self.add_workflow_span(trace_info, trace_metadata)
 
         workflow_node_executions = self.get_workflow_node_executions(trace_info)
+        node_count = len(workflow_node_executions) if workflow_node_executions else 0
+        logger.info(
+            "[aliyun_trace] workflow_node_executions fetched, trace_id=%s, workflow_run_id=%s, node_count=%d",
+            trace_metadata.trace_id,
+            trace_info.workflow_run_id,
+            node_count,
+        )
         for node_execution in workflow_node_executions:
             node_span = self.build_workflow_node_span(node_execution, trace_info, trace_metadata)
             self.trace_client.add_span(node_span)
+        
+        if node_count == 0:
+            logger.error(
+                "[aliyun_trace] workflow_trace completed with no node executions, trace_id=%s, workflow_run_id=%s, app_id=%s",
+                trace_metadata.trace_id,
+                trace_info.workflow_run_id,
+                trace_info.metadata.get("app_id"),
+            )
 
     def message_trace(self, trace_info: MessageTraceInfo):
         message_data = trace_info.message_data
@@ -266,25 +287,44 @@ class AliyunDataTrace(BaseTraceInstance):
         self.trace_client.add_span(tool_span)
 
     def get_workflow_node_executions(self, trace_info: WorkflowTraceInfo) -> Sequence[WorkflowNodeExecution]:
-        app_id = trace_info.metadata.get("app_id")
-        if not app_id:
-            raise ValueError("No app_id found in trace_info metadata")
+        try:
+            app_id = trace_info.metadata.get("app_id")
+            if not app_id:
+                raise ValueError("No app_id found in trace_info metadata")
 
-        service_account = self.get_service_account_with_tenant(app_id)
+            service_account = self.get_service_account_with_tenant(app_id)
 
-        session_factory = sessionmaker(bind=db.engine)
-        workflow_node_execution_repository = SQLAlchemyWorkflowNodeExecutionRepository(
-            session_factory=session_factory,
-            user=service_account,
-            app_id=app_id,
-            triggered_from=WorkflowNodeExecutionTriggeredFrom.WORKFLOW_RUN,
-        )
+            session_factory = sessionmaker(bind=db.engine)
+            workflow_node_execution_repository = SQLAlchemyWorkflowNodeExecutionRepository(
+                session_factory=session_factory,
+                user=service_account,
+                app_id=app_id,
+                triggered_from=WorkflowNodeExecutionTriggeredFrom.WORKFLOW_RUN,
+            )
 
-        return workflow_node_execution_repository.get_by_workflow_run(workflow_run_id=trace_info.workflow_run_id)
+            return workflow_node_execution_repository.get_by_workflow_run(workflow_run_id=trace_info.workflow_run_id)
+        except Exception as e:
+            trace_id = convert_to_trace_id(trace_info.workflow_run_id)
+            logger.error(
+                "[aliyun_trace] get_workflow_node_executions failed, trace_id=%s, workflow_run_id=%s, app_id=%s, error=%s",
+                trace_id,
+                trace_info.workflow_run_id,
+                trace_info.metadata.get("app_id"),
+                str(e),
+                exc_info=True,
+            )
+            raise
 
     def build_workflow_node_span(
         self, node_execution: WorkflowNodeExecution, trace_info: WorkflowTraceInfo, trace_metadata: TraceMetadata
     ):
+        logger.info(
+            "[aliyun_trace] build_workflow_node_span started, trace_id=%s, workflow_run_id=%s, node_id=%s, node_type=%s",
+            trace_metadata.trace_id,
+            trace_info.workflow_run_id,
+            node_execution.id,
+            node_execution.node_type,
+        )
         try:
             if node_execution.node_type == NodeType.LLM:
                 node_span = self.build_workflow_llm_span(trace_info, node_execution, trace_metadata)
@@ -297,6 +337,14 @@ class AliyunDataTrace(BaseTraceInstance):
             return node_span
         except Exception as e:
             logger.debug("Error occurred in build_workflow_node_span: %s", e, exc_info=True)
+            logger.warning(
+                "[aliyun_trace] build_workflow_node_span failed, trace_id=%s, workflow_run_id=%s, node_id=%s, node_type=%s, error=%s",
+                trace_metadata.trace_id,
+                trace_info.workflow_run_id,
+                node_execution.id,
+                node_execution.node_type,
+                str(e),
+            )
             return None
 
     def build_workflow_task_span(
